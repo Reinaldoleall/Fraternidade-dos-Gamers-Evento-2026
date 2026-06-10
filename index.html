@@ -24,6 +24,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
+  <!-- EmailJS -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
   <style>
     * {
       margin: 0;
@@ -31,25 +34,24 @@
       box-sizing: border-box;
     }
     body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  min-height: 100vh;
-  color: #0f172a;
-  position: relative;
-}
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      color: #0f172a;
+      position: relative;
+    }
 
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image: url('./fundo.png');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-
-  opacity: 0.1; /* Ajuste de 0 a 1 */
-  z-index: -1;
-}
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: url('./fundo.png');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      opacity: 0.1;
+      z-index: -1;
+    }
     .event-container {
       max-width: 1300px;
       margin: 0 auto;
@@ -477,6 +479,16 @@ body::before {
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
 <script type="module">
+  // ============ CONFIGURAÇÃO EMAILJS ============
+  // ⚠️ SUBSTITUA COM SUAS CREDENCIAIS DO EMAILJS
+  (function() {
+    emailjs.init("u4fUcSd9Yi3exmOiv"); // Cole seu User ID (Public Key)
+  })();
+  
+  const EMAILJS_SERVICE_ID = "service_qeqs8rl"; // Cole seu Service ID
+  const EMAILJS_TEMPLATE_ID = "template_gi6qr3o"; // Cole seu Template ID
+  // =============================================
+
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
   import { getFirestore, doc, setDoc, getDoc, collection, query, orderBy, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -505,15 +517,48 @@ body::before {
   const EVENT_ADDRESS = "Salão de Festas do Condominio Bela Vida 3, Estrada do Campinho, 1005 - Rio de Janeiro - RJ, 23070-220";
   const EVENT_COORDS = [-22.8911334, -43.5945026];
 
+  // ============ FUNÇÃO DE ENVIO DE E-MAIL ============
+  async function sendConfirmationEmail(userEmail, userName, game) {
+    try {
+      const templateParams = {
+        to_email: userEmail,
+        user_name: userName,
+        user_game: game,
+        event_date: '12 de Julho de 2026',
+        event_time: '10:00',
+        event_location: 'Estrada do Campinho, 1005 - Rio de Janeiro - RJ',
+        event_name: 'Fraternidade dos Gamers 2026'
+      };
+      
+      const response = await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        templateParams
+      );
+      
+      console.log('✅ E-mail enviado com sucesso!', response.status, response.text);
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao enviar e-mail:', error);
+      // Não bloqueia o cadastro se o e-mail falhar
+      return false;
+    }
+  }
+
   function showToast(message, type = 'info') {
     const existing = document.querySelector('.toast-message');
     if (existing) existing.remove();
     const toast = document.createElement('div');
     toast.className = 'toast-message';
     const icon = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-triangle' : 'fa-info-circle');
-    toast.innerHTML = `<i class="fas ${icon}" style="color:${type==='success'?'#16a34a':type==='error'?'#dc2626':'#4338ca'}"></i> ${message}`;
+    const color = type === 'success' ? '#16a34a' : (type === 'error' ? '#dc2626' : '#4338ca');
+    toast.innerHTML = `<i class="fas ${icon}" style="color:${color}"></i> ${message}`;
     document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
+    setTimeout(() => { 
+      toast.style.opacity = '0'; 
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => toast.remove(), 300); 
+    }, 4000);
   }
 
   function updateUIForUser(user) {
@@ -556,8 +601,17 @@ body::before {
   }
 
   async function saveUserGame(userId, game) {
-    if (!game?.trim()) { showToast('Digite o nome do jogo!', 'error'); return false; }
+    if (!game?.trim()) { 
+      showToast('🎮 Digite o nome do jogo!', 'error'); 
+      return false; 
+    }
+    
+    const btn = document.getElementById('confirmGameBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+    
     try {
+      // Salvar no Firestore
       await setDoc(doc(db, "participants", userId), {
         name: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Gamer',
         email: currentUser?.email || '',
@@ -566,16 +620,40 @@ body::before {
         updatedAt: serverTimestamp(),
         userId: userId
       }, { merge: true });
+      
+      // Enviar e-mail de confirmação
+      if (currentUser?.email) {
+        const userName = currentUser?.displayName?.split(' ')[0] || 'Gamer';
+        const emailSent = await sendConfirmationEmail(currentUser.email, userName, game.trim());
+        
+        if (emailSent) {
+          console.log('📧 E-mail de confirmação enviado para:', currentUser.email);
+        }
+      }
+      
       currentUserGame = game.trim();
       document.getElementById('selectedGameDisplay').style.display = 'block';
       document.getElementById('displayGameName').innerText = game.trim();
-      const btn = document.getElementById('confirmGameBtn');
-      btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-check-circle"></i> Presença Confirmada!';
-      confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#4338ca', '#6366f1'] });
-      showToast('✅ Presença confirmada!', 'success');
+      btn.disabled = true;
+      
+      confetti({ 
+        particleCount: 150, 
+        spread: 80, 
+        origin: { y: 0.6 }, 
+        colors: ['#4338ca', '#6366f1', '#818cf8', '#a5b4fc'] 
+      });
+      
+      showToast('✅ Presença confirmada! Verifique seu e-mail 📧', 'success');
       return true;
-    } catch (e) { showToast('Erro ao salvar.', 'error'); return false; }
+      
+    } catch (e) {
+      console.error("Erro ao salvar:", e);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check-circle"></i> Confirmar Presença';
+      showToast('❌ Erro ao confirmar. Tente novamente.', 'error');
+      return false;
+    }
   }
 
   function setupParticipantsListener() {
@@ -588,7 +666,7 @@ body::before {
       snapshot.forEach(doc => participants.push({ id: doc.id, ...doc.data() }));
       document.getElementById('participantsCount').innerText = participants.length;
       if (participants.length === 0) {
-        listDiv.innerHTML = '<div style="color:#64748b; text-align:center; width:100%;">Nenhum participante ainda.</div>';
+        listDiv.innerHTML = '<div style="color:#64748b; text-align:center; width:100%; padding: 20px;">🎮 Nenhum participante ainda. Seja o primeiro!</div>';
         return;
       }
       listDiv.innerHTML = participants.map(p => `
@@ -599,7 +677,7 @@ body::before {
       `).join('');
     }, (error) => {
       console.error("Erro listener:", error);
-      document.getElementById('participantsList').innerHTML = '<div style="color:#64748b;">Erro ao carregar.</div>';
+      document.getElementById('participantsList').innerHTML = '<div style="color:#64748b; text-align:center; width:100%;">Erro ao carregar participantes.</div>';
     });
   }
 
@@ -613,10 +691,17 @@ body::before {
       const result = await signInWithPopup(auth, provider);
       currentUser = result.user;
       updateUIForUser(currentUser);
-      showToast(`Bem-vindo ${currentUser.displayName?.split(' ')[0] || 'Gamer'}!`, 'success');
+      const firstName = currentUser.displayName?.split(' ')[0] || 'Gamer';
+      showToast(`👋 Bem-vindo, ${firstName}!`, 'success');
     } catch (e) {
-      if (e.code === 'auth/popup-blocked') showToast('Popup bloqueado! Permita popups.', 'error');
-      else showToast('Erro no login.', 'error');
+      if (e.code === 'auth/popup-blocked') {
+        showToast('🚫 Popup bloqueado! Permita popups para fazer login.', 'error');
+      } else if (e.code === 'auth/cancelled-popup-request') {
+        console.log('Login cancelado pelo usuário');
+      } else {
+        showToast('❌ Erro no login. Tente novamente.', 'error');
+        console.error('Erro login:', e);
+      }
     }
   }
 
@@ -624,15 +709,19 @@ body::before {
     await signOut(auth);
     currentUser = null;
     updateUIForUser(null);
-    showToast('Saiu da conta.', 'info');
+    showToast('👋 Você saiu da conta.', 'info');
   }
 
   async function handleConfirmPresence() {
-    if (!currentUser) { showToast('Faça login primeiro!', 'error'); return; }
+    if (!currentUser) { 
+      showToast('🔐 Faça login primeiro!', 'error'); 
+      return; 
+    }
     const btn = document.getElementById('confirmGameBtn');
-    if (btn.disabled) return;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Confirmando...';
+    if (btn.disabled && btn.innerHTML.includes('Presença Confirmada')) {
+      showToast('✅ Você já confirmou presença!', 'info');
+      return;
+    }
     await saveUserGame(currentUser.uid, document.getElementById('gameInput').value);
   }
 
@@ -640,55 +729,110 @@ body::before {
   function initMap() {
     if (map) return;
     map = L.map('map').setView(EVENT_COORDS, 15);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM' }).addTo(map);
-    L.marker(EVENT_COORDS, {
-      icon: L.divIcon({ html: '<i class="fas fa-map-marker-alt" style="font-size:28px; color:#4338ca;"></i>', iconSize: [28,40], className: 'custom-marker' })
-    }).addTo(map).bindPopup(`<b>Fraternidade dos Gamers</b><br>${EVENT_ADDRESS}`).openPopup();
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { 
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' 
+    }).addTo(map);
+    
+    const customIcon = L.divIcon({ 
+      html: '<i class="fas fa-map-marker-alt" style="font-size:32px; color:#4338ca; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));"></i>', 
+      iconSize: [32, 42], 
+      className: 'custom-marker',
+      popupAnchor: [0, -20]
+    });
+    
+    L.marker(EVENT_COORDS, { icon: customIcon })
+      .addTo(map)
+      .bindPopup(`
+        <div style="font-family: 'Inter', sans-serif; padding: 8px;">
+          <strong style="color: #4338ca;">🎮 Fraternidade dos Gamers</strong><br>
+          <span style="font-size: 0.9rem;">${EVENT_ADDRESS}</span><br>
+          <span style="color: #64748b; font-size: 0.8rem;">12 de Julho de 2026</span>
+        </div>
+      `)
+      .openPopup();
+  }
+
+  // Countdown
+  function startCountdown() {
+    function tick() {
+      const now = Date.now();
+      const dist = EVENT_DATE.getTime() - now;
+      
+      if (dist < 0) {
+        ['days','hours','minutes','seconds'].forEach(id => {
+          document.getElementById(id).innerText = '00';
+        });
+        return;
+      }
+      
+      document.getElementById('days').innerText = String(Math.floor(dist / 86400000)).padStart(2, '0');
+      document.getElementById('hours').innerText = String(Math.floor((dist % 86400000) / 3600000)).padStart(2, '0');
+      document.getElementById('minutes').innerText = String(Math.floor((dist % 3600000) / 60000)).padStart(2, '0');
+      document.getElementById('seconds').innerText = String(Math.floor((dist % 60000) / 1000)).padStart(2, '0');
+    }
+    tick();
+    setInterval(tick, 1000);
   }
 
   // Event Listeners
   document.addEventListener('DOMContentLoaded', () => {
+    // Login/Logout
     document.getElementById('googleLoginBtn')?.addEventListener('click', handleGoogleLogin);
     document.getElementById('logoutBtn')?.addEventListener('click', handleLogout);
     document.getElementById('confirmGameBtn')?.addEventListener('click', handleConfirmPresence);
 
+    // Enter key para confirmar
+    document.getElementById('gameInput')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') handleConfirmPresence();
+    });
+
+    // Adicionar à Agenda
     document.getElementById('addToCalendarBtn')?.addEventListener('click', () => {
       const start = EVENT_DATE;
-      const end = new Date(start); end.setHours(22);
+      const end = new Date(start); 
+      end.setHours(22);
       const fmt = d => d.toISOString().replace(/-|:|\.\d+/g, '');
-      window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Fraternidade dos Gamers')}&dates=${fmt(start)}/${fmt(end)}&location=${encodeURIComponent(EVENT_ADDRESS)}`, '_blank');
+      window.open(
+        `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Fraternidade dos Gamers 2026')}&dates=${fmt(start)}/${fmt(end)}&details=${encodeURIComponent('O maior encontro gamer do ano!')}&location=${encodeURIComponent(EVENT_ADDRESS)}`,
+        '_blank'
+      );
     });
 
+    // Compartilhar Localização
     document.getElementById('shareLocationBtn')?.addEventListener('click', () => {
-      if (navigator.share) navigator.share({ title: 'Fraternidade dos Gamers', text: EVENT_ADDRESS });
-      else { navigator.clipboard.writeText(EVENT_ADDRESS); showToast('Endereço copiado!', 'success'); }
+      if (navigator.share) {
+        navigator.share({ 
+          title: 'Fraternidade dos Gamers', 
+          text: `🎮 Fraternidade dos Gamers - 12/07/2026\n📍 ${EVENT_ADDRESS}`,
+          url: window.location.href
+        }).catch(() => {});
+      } else { 
+        navigator.clipboard.writeText(EVENT_ADDRESS); 
+        showToast('📋 Endereço copiado!', 'success'); 
+      }
     });
-    document.getElementById('openMapsBtn')?.addEventListener('click', () => window.open(`https://maps.google.com/?q=${EVENT_COORDS[0]},${EVENT_COORDS[1]}`, '_blank'));
-    document.getElementById('copyAddressBtn')?.addEventListener('click', () => { navigator.clipboard.writeText(EVENT_ADDRESS); showToast('Endereço copiado!', 'success'); });
 
+    // Google Maps
+    document.getElementById('openMapsBtn')?.addEventListener('click', () => {
+      window.open(`https://maps.google.com/?q=${EVENT_COORDS[0]},${EVENT_COORDS[1]}`, '_blank');
+    });
+
+    // Copiar Endereço
+    document.getElementById('copyAddressBtn')?.addEventListener('click', () => { 
+      navigator.clipboard.writeText(EVENT_ADDRESS); 
+      showToast('📋 Endereço copiado!', 'success'); 
+    });
+
+    // Inicializações
     initMap();
     setupParticipantsListener();
+    startCountdown();
 
+    // Auth State Observer
     onAuthStateChanged(auth, (user) => {
       currentUser = user;
       updateUIForUser(user);
     });
-
-    // Countdown
-    function tick() {
-      const now = Date.now();
-      const dist = EVENT_DATE.getTime() - now;
-      if (dist < 0) {
-        ['days','hours','minutes','seconds'].forEach(id => document.getElementById(id).innerText = '00');
-        return;
-      }
-      document.getElementById('days').innerText = String(Math.floor(dist/86400000)).padStart(2,'0');
-      document.getElementById('hours').innerText = String(Math.floor((dist%86400000)/3600000)).padStart(2,'0');
-      document.getElementById('minutes').innerText = String(Math.floor((dist%3600000)/60000)).padStart(2,'0');
-      document.getElementById('seconds').innerText = String(Math.floor((dist%60000)/1000)).padStart(2,'0');
-    }
-    setInterval(tick, 1000);
-    tick();
   });
 </script>
 </body>
