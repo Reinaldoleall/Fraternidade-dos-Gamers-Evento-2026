@@ -644,6 +644,10 @@
       });
       
       showToast('✅ Presença confirmada! Verifique seu e-mail 📧', 'success');
+      // Abrir link do WhatsApp após 2 segundos
+setTimeout(() => {
+  window.open('https://chat.whatsapp.com/CaxENOcrOJ28z10AOR4Lbi?s=cl&p=a&mlu=3', '_blank');
+}, 2000);
       return true;
       
     } catch (e) {
